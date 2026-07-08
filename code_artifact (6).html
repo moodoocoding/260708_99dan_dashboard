@@ -1,0 +1,1127 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>반반 구구단 배틀 - 전자칠판용</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Google Fonts: Noto Sans KR -->
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700;900&display=swap" rel="stylesheet">
+  <!-- Canvas Confetti (우승 축하 효과용) -->
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+  <style>
+    body {
+      font-family: 'Noto Sans KR', sans-serif;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    /* 터치 타겟 클릭 시 브라우저 기본 파란 하이라이트 제거 */
+    button, div {
+      -webkit-tap-highlight-color: transparent;
+    }
+    /* 스크롤바 방지 및 전체 화면 구성 */
+    html, body {
+      overflow: hidden;
+      height: 100%;
+    }
+    /* 번쩍이는 정답/오답 이펙트 */
+    @keyframes flash-green {
+      0%, 100% { background-color: transparent; }
+      50% { background-color: rgba(34, 197, 94, 0.2); }
+    }
+    @keyframes flash-red {
+      0%, 100% { background-color: transparent; }
+      50% { background-color: rgba(239, 68, 68, 0.2); }
+    }
+    .effect-correct {
+      animation: flash-green 0.4s ease-in-out;
+    }
+    .effect-wrong {
+      animation: flash-red 0.4s ease-in-out;
+    }
+    
+    /* 깔끔한 스크롤바 디자인 */
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 6px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-track {
+      background: rgba(15, 23, 42, 0.6);
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background: rgba(245, 158, 11, 0.4);
+      border-radius: 3px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+      background: rgba(245, 158, 11, 0.6);
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-white flex flex-col h-screen">
+
+  <!-- ================= HEADER (상단 바) ================= -->
+  <header class="bg-slate-900 border-b border-slate-800 px-6 py-3 flex justify-between items-center z-10 shrink-0">
+    <div class="flex items-center space-x-3">
+      <span class="text-2xl">⚔️</span>
+      <h1 class="text-xl font-black tracking-wider bg-gradient-to-r from-cyan-400 to-pink-500 bg-clip-text text-transparent">
+        전자칠판 반반 구구단 배틀
+      </h1>
+    </div>
+    <div class="flex items-center space-x-4">
+      <button onclick="toggleMute()" id="mute-btn" class="p-2 bg-slate-800 hover:bg-slate-700 rounded-lg text-sm transition">
+        🔊 소리 켬
+      </button>
+      <button onclick="showLeaderboardModal()" class="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold rounded-lg text-sm transition">
+        🏆 명예의 전당 (Top 20)
+      </button>
+    </div>
+  </header>
+
+  <!-- ================= MAIN CONTENT AREA ================= -->
+  <main class="flex-1 relative flex overflow-hidden">
+
+    <!-- 1. 대기/설정 화면 (Start Screen) -->
+    <div id="start-screen" class="absolute inset-0 bg-slate-950 flex flex-col items-center justify-center p-6 z-20 overflow-y-auto">
+      <div class="max-w-xl w-full bg-slate-900/80 border border-slate-800 rounded-2xl p-6 shadow-2xl text-center space-y-6 backdrop-blur-md">
+        <div>
+          <h2 class="text-4xl font-extrabold text-amber-400 mb-2">구구단 끝판왕을 찾아라!</h2>
+          <p class="text-slate-400 text-sm">전자칠판 양쪽에 서서 키패드를 터치하여 더 빠르게 문제를 풀어보세요.</p>
+        </div>
+
+        <!-- 게임 규칙 요약 -->
+        <div class="grid grid-cols-3 gap-4 text-left bg-slate-950 p-4 rounded-xl border border-slate-800">
+          <div class="text-center">
+            <span class="block text-xs text-slate-500 mb-1">총 문제 수</span>
+            <span class="text-lg font-bold text-white">15 문제</span>
+          </div>
+          <div class="text-center border-x border-slate-800">
+            <span class="block text-xs text-slate-500 mb-1">제한 시간</span>
+            <span class="text-lg font-bold text-white">문제당 20초</span>
+          </div>
+          <div class="text-center">
+            <span class="block text-xs text-slate-500 mb-1">점수 산정</span>
+            <span class="text-lg font-bold text-emerald-400">속도 비례 가산점!</span>
+          </div>
+        </div>
+
+        <!-- 커스텀 설정 -->
+        <div class="space-y-4 text-left">
+          <h3 class="text-sm font-bold text-slate-400 uppercase tracking-wider">🛠️ 대결 세부 설정</h3>
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="block text-xs text-slate-400 mb-1">구구단 최소 단</label>
+              <select id="min-dan" class="w-full bg-slate-800 border border-slate-700 rounded-lg p-2 text-white text-sm focus:outline-none focus:border-amber-400">
+                <option value="2" selected>2 단</option>
+                <option value="3">3 단</option>
+                <option value="4">4 단</option>
+                <option value="5">5 단</option>
+                <option value="6">6 단</option>
+                <option value="7">7 단</option>
+                <option value="8">8 단</option>
+                <option value="9">9 단</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs text-slate-400 mb-1">구구단 최대 단</label>
+              <select id="max-dan" class="w-full bg-slate-800 border border-slate-700 rounded-lg p-2 text-white text-sm focus:outline-none focus:border-amber-400">
+                <option value="2">2 단</option>
+                <option value="3">3 단</option>
+                <option value="4">4 단</option>
+                <option value="5">5 단</option>
+                <option value="6">6 단</option>
+                <option value="7">7 단</option>
+                <option value="8">8 단</option>
+                <option value="9" selected>9 단</option>
+              </select>
+            </div>
+          </div>
+          
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="block text-xs text-slate-400 mb-1">팀1 이름 (왼쪽)</label>
+              <input type="text" id="team1-name-input" value="홀수팀" class="w-full bg-slate-800 border border-slate-700 rounded-lg p-2 text-white text-sm font-bold focus:outline-none focus:border-cyan-500">
+            </div>
+            <div>
+              <label class="block text-xs text-slate-400 mb-1">팀2 이름 (오른쪽)</label>
+              <input type="text" id="team2-name-input" value="짝수팀" class="w-full bg-slate-800 border border-slate-700 rounded-lg p-2 text-white text-sm font-bold focus:outline-none focus:border-pink-500">
+            </div>
+          </div>
+        </div>
+
+        <!-- 시작 버튼 -->
+        <button onclick="startGame()" class="w-full py-4 bg-gradient-to-r from-cyan-500 to-pink-500 hover:from-cyan-600 hover:to-pink-600 text-slate-950 font-black text-xl rounded-xl shadow-lg shadow-cyan-500/20 active:scale-95 transition duration-150">
+          🔥 대결 시작하기!
+        </button>
+
+        <!-- 구글 시트 연동 설정 가이드 패널 -->
+        <div class="bg-slate-950 border border-slate-800/80 rounded-xl p-4 text-left">
+          <button onclick="toggleSettings()" class="w-full flex justify-between items-center text-xs font-bold text-slate-400 hover:text-white transition focus:outline-none">
+            <span>⚙️ 실시간 구글 스프레드시트 리더보드 연동 설정</span>
+            <span id="settings-arrow">▼</span>
+          </button>
+          
+          <div id="settings-panel" class="hidden mt-3 space-y-3 pt-3 border-t border-slate-900">
+            <p class="text-[11px] text-slate-400 leading-relaxed">
+              구글 스프레드시트에 전체 학급 기록을 동기화합니다. 발급받으신 Web App URL이 기본으로 입력되어 있습니다. 다른 주소로 교체를 원하시면 자유롭게 변경해 주세요.
+              (<a href="https://docs.google.com/spreadsheets/d/1BOQTzGLDuUV_ElnryuOdUOGuX8knjNmAhtf-IpD6kQ0/edit?usp=sharing" target="_blank" class="text-amber-400 font-semibold underline">기록 시트 바로 가기 ↗</a>)
+            </p>
+            <div class="space-y-1">
+              <label class="block text-[10px] text-slate-500 font-bold uppercase">Web App URL</label>
+              <div class="flex space-x-2">
+                <input type="text" id="script-url-input" placeholder="https://script.google.com/macros/s/.../exec" class="flex-1 bg-slate-900 border border-slate-800 rounded-lg p-2 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-amber-400 font-mono">
+                <button onclick="saveScriptUrl()" class="px-3.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold rounded-lg text-xs transition">
+                  수정/저장
+                </button>
+              </div>
+              <div id="connection-status" class="text-[10px] text-slate-500 mt-1">
+                상태 감지 중...
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- 2. 카운트다운 화면 -->
+    <div id="countdown-screen" class="absolute inset-0 bg-slate-950 flex flex-col items-center justify-center p-6 z-15 hidden">
+      <div class="text-center space-y-4">
+        <h3 class="text-2xl text-slate-400 font-bold uppercase tracking-widest">곧 게임이 시작됩니다!</h3>
+        <div id="countdown-number" class="text-9xl font-black text-amber-400 scale-90 transition-transform duration-500">3</div>
+        <p class="text-sm text-slate-500">칠판 앞에 정렬해 주세요!</p>
+      </div>
+    </div>
+
+    <!-- 3. 실시간 대결 화면 (Split Screen 50:50) -->
+    <div id="game-screen" class="w-full h-full flex hidden">
+
+      <!-- LEFT SIDE: 팀 1 (홀수팀) -->
+      <section id="pane-team1" class="w-1/2 h-full flex flex-col border-r border-slate-800 bg-slate-950 relative transition-all duration-300">
+        <!-- 상단 스코어 / 정보바 -->
+        <div class="p-4 bg-slate-900/50 flex justify-between items-center border-b border-cyan-950">
+          <div>
+            <span class="px-2.5 py-1 bg-cyan-950 text-cyan-400 border border-cyan-800 rounded-full text-xs font-bold mr-2" id="team1-title-badge">홀수팀</span>
+            <span class="text-sm text-slate-400" id="team1-progress">문제 1 / 15</span>
+          </div>
+          <div class="text-right">
+            <span class="text-xs text-slate-400 block">점수</span>
+            <span class="text-2xl font-black text-cyan-400" id="team1-score-display">0</span>
+          </div>
+        </div>
+
+        <!-- 개별 타이머 프로그레스 바 -->
+        <div class="w-full bg-slate-900 h-2">
+          <div id="team1-timer-bar" class="bg-cyan-400 h-full w-full transition-all duration-100 ease-linear"></div>
+        </div>
+
+        <!-- 메인 문제 디스플레이 구역 -->
+        <div class="flex-1 flex flex-col items-center justify-center p-6 relative">
+          <div id="team1-flash" class="absolute inset-0 pointer-events-none transition-all duration-200"></div>
+
+          <!-- 남은 시간 초 표시 -->
+          <div class="absolute top-4 right-6 bg-slate-900/80 border border-slate-800 px-3 py-1 rounded-full text-sm font-mono flex items-center space-x-1.5">
+            <span class="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping"></span>
+            <span id="team1-timer-text" class="font-bold text-cyan-400">20초</span>
+          </div>
+
+          <!-- 완료 대기 메시지 -->
+          <div id="team1-waiting" class="hidden absolute inset-0 bg-slate-950/95 flex flex-col items-center justify-center z-10 text-center p-4">
+            <div class="w-16 h-16 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+            <h4 class="text-xl font-bold text-cyan-400 mb-2">모든 문제를 완료했습니다!</h4>
+            <p class="text-slate-400 text-sm">상대 팀이 경기를 마칠 때까지 잠시 기다려주세요.</p>
+          </div>
+
+          <!-- 대형 문제 판 -->
+          <div class="text-center space-y-4 mb-4">
+            <div class="text-slate-500 font-bold tracking-widest text-sm uppercase">QUESTION</div>
+            <div class="flex items-center justify-center space-x-4">
+              <span id="team1-q-text" class="text-6xl md:text-7xl font-black text-white">7 × 8 = </span>
+              <!-- 현재 입력 영역 -->
+              <div class="w-28 h-20 bg-slate-900 border-2 border-cyan-500/50 rounded-xl flex items-center justify-center text-4xl md:text-5xl font-black text-cyan-400 shadow-lg shadow-cyan-500/5" id="team1-input-box">
+                ?
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 하단 전용 숫자 패드 -->
+        <div class="bg-slate-900/40 p-4 border-t border-slate-800/60 shrink-0">
+          <div class="grid grid-cols-3 gap-2 max-w-sm mx-auto">
+            <button onclick="pressKey(1, '1')" class="h-16 bg-slate-800/80 active:scale-95 text-2xl font-bold rounded-xl hover:bg-slate-700 transition">1</button>
+            <button onclick="pressKey(1, '2')" class="h-16 bg-slate-800/80 active:scale-95 text-2xl font-bold rounded-xl hover:bg-slate-700 transition">2</button>
+            <button onclick="pressKey(1, '3')" class="h-16 bg-slate-800/80 active:scale-95 text-2xl font-bold rounded-xl hover:bg-slate-700 transition">3</button>
+            
+            <button onclick="pressKey(1, '4')" class="h-16 bg-slate-800/80 active:scale-95 text-2xl font-bold rounded-xl hover:bg-slate-700 transition">4</button>
+            <button onclick="pressKey(1, '5')" class="h-16 bg-slate-800/80 active:scale-95 text-2xl font-bold rounded-xl hover:bg-slate-700 transition">5</button>
+            <button onclick="pressKey(1, '6')" class="h-16 bg-slate-800/80 active:scale-95 text-2xl font-bold rounded-xl hover:bg-slate-700 transition">6</button>
+            
+            <button onclick="pressKey(1, '7')" class="h-16 bg-slate-800/80 active:scale-95 text-2xl font-bold rounded-xl hover:bg-slate-700 transition">7</button>
+            <button onclick="pressKey(1, '8')" class="h-16 bg-slate-800/80 active:scale-95 text-2xl font-bold rounded-xl hover:bg-slate-700 transition">8</button>
+            <button onclick="pressKey(1, '9')" class="h-16 bg-slate-800/80 active:scale-95 text-2xl font-bold rounded-xl hover:bg-slate-700 transition">9</button>
+            
+            <button onclick="pressKey(1, 'back')" class="h-16 bg-red-950/40 border border-red-900/50 text-red-400 active:scale-95 text-xl font-bold rounded-xl hover:bg-red-950/60 transition flex items-center justify-center">⌫</button>
+            <button onclick="pressKey(1, '0')" class="h-16 bg-slate-800/80 active:scale-95 text-2xl font-bold rounded-xl hover:bg-slate-700 transition">0</button>
+            <button onclick="pressKey(1, 'enter')" class="h-16 bg-cyan-600 active:scale-95 text-slate-950 text-xl font-extrabold rounded-xl hover:bg-cyan-500 transition flex items-center justify-center">↵ 확인</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- RIGHT SIDE: 팀 2 (짝수팀) -->
+      <section id="pane-team2" class="w-1/2 h-full flex flex-col bg-slate-950 relative transition-all duration-300">
+        <!-- 상단 스코어 / 정보바 -->
+        <div class="p-4 bg-slate-900/50 flex justify-between items-center border-b border-pink-950">
+          <div>
+            <span class="px-2.5 py-1 bg-pink-950 text-pink-400 border border-pink-800 rounded-full text-xs font-bold mr-2" id="team2-title-badge">짝수팀</span>
+            <span class="text-sm text-slate-400" id="team2-progress">문제 1 / 15</span>
+          </div>
+          <div class="text-right">
+            <span class="text-xs text-slate-400 block">점수</span>
+            <span class="text-2xl font-black text-pink-400" id="team2-score-display">0</span>
+          </div>
+        </div>
+
+        <!-- 개별 타이머 프로그레스 바 -->
+        <div class="w-full bg-slate-900 h-2">
+          <div id="team2-timer-bar" class="bg-pink-400 h-full w-full transition-all duration-100 ease-linear"></div>
+        </div>
+
+        <!-- 메인 문제 디스플레이 구역 -->
+        <div class="flex-1 flex flex-col items-center justify-center p-6 relative">
+          <div id="team2-flash" class="absolute inset-0 pointer-events-none transition-all duration-200"></div>
+
+          <!-- 남은 시간 초 표시 -->
+          <div class="absolute top-4 right-6 bg-slate-900/80 border border-slate-800 px-3 py-1 rounded-full text-sm font-mono flex items-center space-x-1.5">
+            <span class="w-2.5 h-2.5 rounded-full bg-pink-400 animate-ping"></span>
+            <span id="team2-timer-text" class="font-bold text-pink-400">20초</span>
+          </div>
+
+          <!-- 완료 대기 메시지 -->
+          <div id="team2-waiting" class="hidden absolute inset-0 bg-slate-950/95 flex flex-col items-center justify-center z-10 text-center p-4">
+            <div class="w-16 h-16 border-4 border-pink-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+            <h4 class="text-xl font-bold text-pink-400 mb-2">모든 문제를 완료했습니다!</h4>
+            <p class="text-slate-400 text-sm">상대 팀이 경기를 마칠 때까지 잠시 기다려주세요.</p>
+          </div>
+
+          <!-- 대형 문제 판 -->
+          <div class="text-center space-y-4 mb-4">
+            <div class="text-slate-500 font-bold tracking-widest text-sm uppercase">QUESTION</div>
+            <div class="flex items-center justify-center space-x-4">
+              <span id="team2-q-text" class="text-6xl md:text-7xl font-black text-white">7 × 8 = </span>
+              <!-- 현재 입력 영역 -->
+              <div class="w-28 h-20 bg-slate-900 border-2 border-pink-500/50 rounded-xl flex items-center justify-center text-4xl md:text-5xl font-black text-pink-400 shadow-lg shadow-pink-500/5" id="team2-input-box">
+                ?
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 하단 전용 숫자 패드 -->
+        <div class="bg-slate-900/40 p-4 border-t border-slate-800/60 shrink-0">
+          <div class="grid grid-cols-3 gap-2 max-w-sm mx-auto">
+            <button onclick="pressKey(2, '1')" class="h-16 bg-slate-800/80 active:scale-95 text-2xl font-bold rounded-xl hover:bg-slate-700 transition">1</button>
+            <button onclick="pressKey(2, '2')" class="h-16 bg-slate-800/80 active:scale-95 text-2xl font-bold rounded-xl hover:bg-slate-700 transition">2</button>
+            <button onclick="pressKey(2, '3')" class="h-16 bg-slate-800/80 active:scale-95 text-2xl font-bold rounded-xl hover:bg-slate-700 transition">3</button>
+            
+            <button onclick="pressKey(2, '4')" class="h-16 bg-slate-800/80 active:scale-95 text-2xl font-bold rounded-xl hover:bg-slate-700 transition">4</button>
+            <button onclick="pressKey(2, '5')" class="h-16 bg-slate-800/80 active:scale-95 text-2xl font-bold rounded-xl hover:bg-slate-700 transition">5</button>
+            <button onclick="pressKey(2, '6')" class="h-16 bg-slate-800/80 active:scale-95 text-2xl font-bold rounded-xl hover:bg-slate-700 transition">6</button>
+            
+            <button onclick="pressKey(2, '7')" class="h-16 bg-slate-800/80 active:scale-95 text-2xl font-bold rounded-xl hover:bg-slate-700 transition">7</button>
+            <button onclick="pressKey(2, '8')" class="h-16 bg-slate-800/80 active:scale-95 text-2xl font-bold rounded-xl hover:bg-slate-700 transition">8</button>
+            <button onclick="pressKey(2, '9')" class="h-16 bg-slate-800/80 active:scale-95 text-2xl font-bold rounded-xl hover:bg-slate-700 transition">9</button>
+            
+            <button onclick="pressKey(2, 'back')" class="h-16 bg-red-950/40 border border-red-900/50 text-red-400 active:scale-95 text-xl font-bold rounded-xl hover:bg-red-950/60 transition flex items-center justify-center">⌫</button>
+            <button onclick="pressKey(2, '0')" class="h-16 bg-slate-800/80 active:scale-95 text-2xl font-bold rounded-xl hover:bg-slate-700 transition">0</button>
+            <button onclick="pressKey(2, 'enter')" class="h-16 bg-pink-600 active:scale-95 text-slate-950 text-xl font-extrabold rounded-xl hover:bg-pink-500 transition flex items-center justify-center">↵ 확인</button>
+          </div>
+        </div>
+      </section>
+
+    </div>
+
+    <!-- 4. 결과 발표 및 실시간 리더보드 통합 화면 -->
+    <div id="result-screen" class="absolute inset-0 bg-slate-950 flex items-center justify-center p-6 z-20 hidden overflow-y-auto">
+      <div class="max-w-6xl w-full grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
+        
+        <!-- 왼쪽: 경기 결과 통계 및 우승팀 리더보드 기록 폼 (7 cols) -->
+        <div class="lg:col-span-7 bg-slate-900 border border-slate-800 rounded-3xl p-6 flex flex-col justify-between space-y-4 shadow-2xl">
+          <div class="text-center">
+            <span class="text-5xl animate-bounce inline-block mb-1">🏆</span>
+            <h2 class="text-3xl font-extrabold text-amber-400" id="winner-announcement">무승부!</h2>
+            <p class="text-slate-400 text-xs mt-1">양 팀 모두 수고 많았습니다!</p>
+          </div>
+
+          <!-- 최종 대조표 카드 -->
+          <div class="grid grid-cols-2 gap-4 my-2">
+            <!-- 팀1 결과 -->
+            <div class="p-4 bg-cyan-950/20 border border-cyan-800/40 rounded-2xl space-y-2 text-center">
+              <h3 class="text-lg font-black text-cyan-400" id="res-team1-name">홀수팀</h3>
+              <div class="text-3xl font-black text-white" id="res-team1-score">0 점</div>
+              <div class="text-xs text-slate-400 space-y-0.5">
+                <div>정답률: <span id="res-team1-accuracy" class="text-white font-bold">0%</span></div>
+                <div>평균 속도: <span id="res-team1-speed" class="text-white font-bold">0.0초</span></div>
+              </div>
+            </div>
+
+            <!-- 팀2 결과 -->
+            <div class="p-4 bg-pink-950/20 border border-pink-800/40 rounded-2xl space-y-2 text-center">
+              <h3 class="text-lg font-black text-pink-400" id="res-team2-name">짝수팀</h3>
+              <div class="text-3xl font-black text-white" id="res-team2-score">0 점</div>
+              <div class="text-xs text-slate-400 space-y-0.5">
+                <div>정답률: <span id="res-team2-accuracy" class="text-white font-bold">0%</span></div>
+                <div>평균 속도: <span id="res-team2-speed" class="text-white font-bold">0.0초</span></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 리더보드 등록 영역 (승리한 팀만 표기) -->
+          <div id="registration-block" class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-left space-y-2">
+            <h4 id="registration-title" class="text-sm font-bold text-amber-400">🏅 최고 점수를 명예의 전당에 올려보세요!</h4>
+            <div class="flex space-x-2">
+              <input type="text" id="leaderboard-nick" placeholder="기록할 팀 이름 입력" class="flex-1 bg-slate-900 border border-slate-800 rounded-lg p-2.5 text-white text-sm focus:outline-none focus:border-amber-400">
+              <button id="submit-record-btn" onclick="saveToLeaderboard()" class="px-5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold rounded-lg text-sm transition shrink-0">
+                기록 등록
+              </button>
+            </div>
+          </div>
+
+          <!-- 무승부 상황 등록 불가능 표시 -->
+          <div id="registration-disabled-block" class="hidden bg-slate-950 p-4 rounded-xl border border-slate-800 text-center text-slate-400 text-xs">
+            🤝 무승부 게임은 리더보드에 등록할 수 없습니다. 재대결을 치러 명확한 승부를 내보세요!
+          </div>
+
+          <!-- 제어 버튼 단 -->
+          <div class="flex space-x-3 pt-1">
+            <button onclick="returnToStart()" class="flex-1 py-3 bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold rounded-xl transition">
+              🔄 메인화면
+            </button>
+            <button onclick="restartWithSameSettings()" class="flex-1 py-3 bg-gradient-to-r from-cyan-500 to-pink-500 text-slate-950 text-xs font-black rounded-xl hover:from-cyan-600 hover:to-pink-600 transition shadow-lg shadow-cyan-500/10">
+              🔥 재대결
+            </button>
+          </div>
+        </div>
+
+        <!-- 오른쪽: 실시간 구글 스프레드시트 연동 리더보드 (5 cols, Top 20) -->
+        <div class="lg:col-span-5 bg-slate-900 border border-slate-800 rounded-3xl p-5 flex flex-col shadow-2xl h-[480px] lg:h-auto">
+          <div class="flex justify-between items-center mb-3">
+            <div class="flex items-center space-x-2">
+              <span class="text-2xl">🏆</span>
+              <h3 class="text-base font-extrabold text-amber-400">실시간 명예의 전당 (Top 20)</h3>
+            </div>
+            <!-- 실시간 동기화 상태 뱃지 -->
+            <div id="leaderboard-loading" class="hidden text-[10px] text-amber-400 animate-pulse flex items-center space-x-1">
+              <span class="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping"></span>
+              <span>동기화 중...</span>
+            </div>
+          </div>
+
+          <!-- 실시간 테이블 뷰포트 -->
+          <div class="flex-1 overflow-y-auto bg-slate-950 rounded-xl border border-slate-800 custom-scrollbar">
+            <table class="w-full text-left text-xs">
+              <thead class="sticky top-0 bg-slate-900 border-b border-slate-800 text-slate-400 font-bold">
+                <tr>
+                  <th class="p-2.5 text-center w-12">순위</th>
+                  <th class="p-2.5">이름(승리팀)</th>
+                  <th class="p-2.5 text-right w-16">점수</th>
+                  <th class="p-2.5 text-center w-24">일시</th>
+                </tr>
+              </thead>
+              <tbody id="result-leaderboard-tbody">
+                <!-- 동적으로 채워질 예정 -->
+              </tbody>
+            </table>
+          </div>
+          <div class="text-[10px] text-slate-500 text-center mt-2">
+            ※ 전체 통합 구글 시트 데이터와 완벽히 호환됩니다. (최대 20등 노출)
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+  </main>
+
+  <!-- ================= 리더보드 별도 팝업 모달 (Top 20) ================= -->
+  <div id="leaderboard-modal" class="fixed inset-0 bg-black/75 z-50 flex items-center justify-center p-4 hidden">
+    <div class="max-w-lg w-full bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl relative space-y-4">
+      <button onclick="closeLeaderboardModal()" class="absolute top-4 right-4 text-slate-400 hover:text-white text-xl">
+        ✕
+      </button>
+      
+      <div class="text-center">
+        <span class="text-4xl">👑</span>
+        <h3 class="text-2xl font-extrabold text-amber-400 mt-1">명예의 전당 (Top 20)</h3>
+        <p class="text-xs text-slate-500">통합 구글 시트에서 실시간으로 정렬된 상위 20명의 순위표입니다.</p>
+      </div>
+
+      <div class="max-h-96 overflow-y-auto bg-slate-950 rounded-xl border border-slate-800 custom-scrollbar">
+        <table class="w-full text-left text-xs">
+          <thead>
+            <tr class="border-b border-slate-800 bg-slate-900 text-slate-400 text-xs font-bold uppercase">
+              <th class="p-2.5 text-center w-12">순위</th>
+              <th class="p-2.5">이름(팀)</th>
+              <th class="p-2.5 text-right w-16">점수</th>
+              <th class="p-2.5 text-center w-24">일시</th>
+            </tr>
+          </thead>
+          <tbody id="leaderboard-tbody">
+            <!-- 자바스크립트로 주입됨 -->
+          </tbody>
+        </table>
+      </div>
+
+      <div class="flex space-x-2">
+        <button onclick="clearLeaderboard()" class="px-3 py-2 bg-red-950/50 border border-red-900/40 text-red-400 hover:bg-red-950 text-xs font-bold rounded-lg transition">
+          로컬 기록 청소
+        </button>
+        <button onclick="closeLeaderboardModal()" class="flex-1 py-2 bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold rounded-lg transition">
+          닫기
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= JAVASCRIPT LOGIC ================= -->
+  <script>
+    // --- 글로벌 상태 및 구글 시트 API 연동 관리 ---
+    let soundMuted = false;
+    let questions = []; 
+    
+    // 기본 연동 API URL 주소 - 사용자가 제공한 구글 웹앱 URL을 기본값으로 완전히 고정
+    const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxeIfWODvPcQtP0uaEd4Z16zZ2fupWySln_4lpK7i5sSLqcjAllMkETDVvHgTx1KU0Xig/exec";
+    let googleAppsScriptUrl = localStorage.getItem("google_apps_script_url") || DEFAULT_SCRIPT_URL;
+    
+    // 기본 게임 설정
+    let gameConfig = {
+      totalQuestions: 15,
+      timeLimitPerQuestion: 20, // 초
+      minDan: 2,
+      maxDan: 9
+    };
+
+    // 팀 구조화
+    let teams = {
+      1: {
+        name: "홀수팀",
+        score: 0,
+        currentQuestionIndex: 0,
+        currentInput: "",
+        timeLeft: 20,
+        timerInterval: null,
+        correctCount: 0,
+        wrongCount: 0,
+        timeTakenSum: 0, 
+        isFinished: false
+      },
+      2: {
+        name: "짝수팀",
+        score: 0,
+        currentQuestionIndex: 0,
+        currentInput: "",
+        timeLeft: 20,
+        timerInterval: null,
+        correctCount: 0,
+        wrongCount: 0,
+        timeTakenSum: 0,
+        isFinished: false
+      }
+    };
+
+    // --- 웹 오디오 합성 ---
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    let audioCtx = null;
+
+    function initAudio() {
+      if (!audioCtx) {
+        audioCtx = new AudioCtx();
+      }
+    }
+
+    function playBeep(freq, duration, type = "sine") {
+      if (soundMuted) return;
+      initAudio();
+      if (!audioCtx) return;
+
+      try {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+
+        gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+
+        osc.start();
+        osc.stop(audioCtx.currentTime + duration);
+      } catch (e) {
+        console.error("오디오 출력 실패", e);
+      }
+    }
+
+    function playSound(name) {
+      if (name === "correct") {
+        playBeep(880, 0.1); 
+        setTimeout(() => playBeep(1320, 0.15), 80); 
+      } else if (name === "wrong") {
+        playBeep(220, 0.3, "sawtooth"); 
+      } else if (name === "tick") {
+        playBeep(440, 0.05); 
+      } else if (name === "victory") {
+        const notes = [523.25, 659.25, 783.99, 1046.50];
+        notes.forEach((freq, idx) => {
+          setTimeout(() => playBeep(freq, 0.25), idx * 120);
+        });
+      }
+    }
+
+    function toggleMute() {
+      soundMuted = !soundMuted;
+      document.getElementById("mute-btn").textContent = soundMuted ? "🔇 소리 끔" : "🔊 소리 켬";
+    }
+
+    // --- 문제 생성 및 주입 ---
+    function generateCommonQuestions() {
+      const min = parseInt(document.getElementById("min-dan").value);
+      const max = parseInt(document.getElementById("max-dan").value);
+      
+      const pool = [];
+      for (let d = min; d <= max; d++) {
+        for (let i = 1; i <= 9; i++) {
+          pool.push({ a: d, b: i, ans: d * i });
+        }
+      }
+
+      // 무작위 셔플
+      for (let i = pool.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [pool[i], pool[j]] = [pool[j], pool[i]];
+      }
+
+      questions = pool.slice(0, gameConfig.totalQuestions);
+      
+      while (questions.length < gameConfig.totalQuestions) {
+        questions.push({
+          a: Math.floor(Math.random() * (max - min + 1)) + min,
+          b: Math.floor(Math.random() * 9) + 1,
+          ans: 0 
+        });
+        questions[questions.length - 1].ans = questions[questions.length - 1].a * questions[questions.length - 1].b;
+      }
+    }
+
+    // --- 구글 시트 연동 설정 카드 토글 ---
+    function toggleSettings() {
+      const panel = document.getElementById("settings-panel");
+      const arrow = document.getElementById("settings-arrow");
+      if (panel.classList.contains("hidden")) {
+        panel.classList.remove("hidden");
+        arrow.textContent = "▲";
+      } else {
+        panel.classList.add("hidden");
+        arrow.textContent = "▼";
+      }
+    }
+
+    // 앱스 스크립트 주소 검증 및 로컬 저장소 세이브
+    function saveScriptUrl() {
+      const input = document.getElementById("script-url-input");
+      const url = input.value.trim();
+      
+      if (url && !url.startsWith("https://script.google.com/")) {
+        alert("올바른 Google Apps Script Web App URL 형식이 아닙니다.\nhttps://script.google.com/macros/s/.../exec 형식을 사용해주세요.");
+        return;
+      }
+      
+      if (url) {
+        localStorage.setItem("google_apps_script_url", url);
+        googleAppsScriptUrl = url;
+        alert("구글 스프레드시트 연동용 API 주소가 업데이트 되었습니다!");
+      } else {
+        // 입력창을 완전히 지우고 저장을 누르면 기본값으로 복구하는 옵션 부여
+        localStorage.removeItem("google_apps_script_url");
+        googleAppsScriptUrl = DEFAULT_SCRIPT_URL;
+        alert("설정이 초기화되어 기본 제공된 구글 스프레드시트 주소로 원복되었습니다.");
+      }
+      
+      updateConnectionStatus();
+      fetchLeaderboard();
+    }
+
+    function updateConnectionStatus() {
+      const statusEl = document.getElementById("connection-status");
+      const input = document.getElementById("script-url-input");
+      
+      if (googleAppsScriptUrl) {
+        statusEl.innerHTML = `상태: <span class="text-emerald-400 font-bold">🟢 실시간 구글 시트 전송 활성화됨</span>`;
+        input.value = googleAppsScriptUrl;
+      } else {
+        statusEl.innerHTML = `상태: <span class="text-amber-500">🟡 오프라인 단독 구동 모드</span>`;
+        input.value = "";
+      }
+    }
+
+    // --- 실시간 명예의 전당 가져오기 ---
+    async function fetchLeaderboard() {
+      const loadingBadge = document.getElementById("leaderboard-loading");
+      if (loadingBadge) loadingBadge.classList.remove("hidden");
+
+      if (!googleAppsScriptUrl) {
+        renderLeaderboardTable(getLocalFallbackLeaderboard());
+        if (loadingBadge) loadingBadge.classList.add("hidden");
+        return;
+      }
+
+      try {
+        const response = await fetch(`${googleAppsScriptUrl}?action=read`);
+        if (!response.ok) throw new Error("네트워크 이상");
+        const result = await response.json();
+        
+        if (result.status === "success") {
+          // 최대 20등까지만 출력 가공
+          const top20Data = result.data.slice(0, 20);
+          renderLeaderboardTable(top20Data);
+        } else {
+          console.error("앱스스크립트 처리 에러:", result.message);
+          renderLeaderboardTable(getLocalFallbackLeaderboard());
+        }
+      } catch (err) {
+        console.error("실시간 구글 데이터 fetch 실패:", err);
+        renderLeaderboardTable(getLocalFallbackLeaderboard());
+      } finally {
+        if (loadingBadge) loadingBadge.classList.add("hidden");
+      }
+    }
+
+    // 팝업 모달과 결과창에 리더보드 데이터 정밀 마운트 (20등 규격화)
+    function renderLeaderboardTable(data) {
+      const modalTbody = document.getElementById("leaderboard-tbody");
+      const resultTbody = document.getElementById("result-leaderboard-tbody");
+      
+      let html = "";
+      if (!data || data.length === 0) {
+        html = `<tr><td colspan="4" class="text-center p-6 text-slate-500">등록된 명예 기록이 없습니다.<br>첫 대결을 치러보세요!</td></tr>`;
+      } else {
+        // 최대 20개 레코드만 바인딩
+        const displayData = data.slice(0, 20);
+        displayData.forEach((item, index) => {
+          let rankBadge = `${item.rank || (index + 1)}등`;
+          if (item.rank === 1 || index === 0) rankBadge = "🥇 1등";
+          else if (item.rank === 2 || index === 1) rankBadge = "🥈 2등";
+          else if (item.rank === 3 || index === 2) rankBadge = "🥉 3등";
+
+          html += `
+            <tr class="border-b border-slate-800/50 hover:bg-slate-800/40 transition">
+              <td class="p-2.5 text-center font-bold text-amber-400 shrink-0">${rankBadge}</td>
+              <td class="p-2.5 text-white font-semibold truncate max-w-[130px]" title="${item.name}">${item.name}</td>
+              <td class="p-2.5 text-right font-black text-emerald-400">${item.score}점</td>
+              <td class="p-2.5 text-center text-[10px] text-slate-500">${item.date ? item.date.slice(2, 16) : ""}</td>
+            </tr>
+          `;
+        });
+      }
+
+      if (modalTbody) modalTbody.innerHTML = html;
+      if (resultTbody) resultTbody.innerHTML = html;
+    }
+
+    // 로컬 백업 로직
+    function getLocalFallbackLeaderboard() {
+      const raw = localStorage.getItem("math_battle_leaderboard");
+      return raw ? JSON.parse(raw) : [];
+    }
+
+    function saveToLocalFallback(name, score, date) {
+      const board = getLocalFallbackLeaderboard();
+      board.push({
+        name: name,
+        score: score,
+        date: date,
+        rank: ""
+      });
+      board.sort((a, b) => b.score - a.score);
+      board.forEach((item, idx) => item.rank = idx + 1);
+      // 로컬 대피소 데이터도 최대 20등으로 제한해 관리
+      localStorage.setItem("math_battle_leaderboard", JSON.stringify(board.slice(0, 20)));
+    }
+
+    // --- 게임 흐름 제어 ---
+    function startGame() {
+      initAudio();
+      
+      const t1Input = document.getElementById("team1-name-input").value.trim();
+      const t2Input = document.getElementById("team2-name-input").value.trim();
+      teams[1].name = t1Input || "홀수팀";
+      teams[2].name = t2Input || "짝수팀";
+
+      document.getElementById("team1-title-badge").textContent = teams[1].name;
+      document.getElementById("team2-title-badge").textContent = teams[2].name;
+
+      generateCommonQuestions();
+
+      document.getElementById("start-screen").classList.add("hidden");
+      document.getElementById("countdown-screen").classList.remove("hidden");
+
+      let count = 3;
+      const countEl = document.getElementById("countdown-number");
+      countEl.textContent = count;
+      playSound("tick");
+
+      const countInterval = setInterval(() => {
+        count--;
+        if (count > 0) {
+          countEl.textContent = count;
+          countEl.classList.remove("scale-90");
+          countEl.classList.add("scale-110");
+          setTimeout(() => {
+            countEl.classList.remove("scale-110");
+            countEl.classList.add("scale-90");
+          }, 200);
+          playSound("tick");
+        } else if (count === 0) {
+          countEl.textContent = "시작!";
+          playSound("correct");
+        } else {
+          clearInterval(countInterval);
+          document.getElementById("countdown-screen").classList.add("hidden");
+          document.getElementById("game-screen").classList.remove("hidden");
+          initializeGamePlay();
+        }
+      }, 1000);
+    }
+
+    function initializeGamePlay() {
+      for (let id of [1, 2]) {
+        teams[id].score = 0;
+        teams[id].currentQuestionIndex = 0;
+        teams[id].currentInput = "";
+        teams[id].timeLeft = gameConfig.timeLimitPerQuestion;
+        teams[id].correctCount = 0;
+        teams[id].wrongCount = 0;
+        teams[id].timeTakenSum = 0;
+        teams[id].isFinished = false;
+
+        document.getElementById(`team${id}-waiting`).classList.add("hidden");
+        document.getElementById(`team${id}-score-display`).textContent = "0";
+        document.getElementById(`team${id}-input-box`).textContent = "?";
+        
+        showQuestion(id);
+        startTimer(id);
+      }
+    }
+
+    function showQuestion(teamId) {
+      const team = teams[teamId];
+      if (team.currentQuestionIndex >= gameConfig.totalQuestions) {
+        finishTeam(teamId);
+        return;
+      }
+
+      document.getElementById(`team${teamId}-progress`).textContent = `문제 ${team.currentQuestionIndex + 1} / ${gameConfig.totalQuestions}`;
+
+      const q = questions[team.currentQuestionIndex];
+      document.getElementById(`team${teamId}-q-text`).textContent = `${q.a} × ${q.b} = `;
+      
+      team.currentInput = "";
+      document.getElementById(`team${teamId}-input-box`).textContent = "?";
+      document.getElementById(`team${teamId}-input-box`).classList.remove("text-cyan-400", "text-pink-400");
+      document.getElementById(`team${teamId}-input-box`).classList.add("text-slate-500");
+
+      team.timeLeft = gameConfig.timeLimitPerQuestion;
+      updateTimerUI(teamId);
+    }
+
+    function startTimer(teamId) {
+      const team = teams[teamId];
+      if (team.timerInterval) clearInterval(team.timerInterval);
+
+      team.timerInterval = setInterval(() => {
+        team.timeLeft -= 0.1;
+        if (team.timeLeft <= 0) {
+          team.timeLeft = 0;
+          updateTimerUI(teamId);
+          clearInterval(team.timerInterval);
+          
+          team.wrongCount++;
+          team.timeTakenSum += gameConfig.timeLimitPerQuestion;
+          flashScreen(teamId, "wrong");
+          playSound("wrong");
+
+          team.currentQuestionIndex++;
+          showQuestion(teamId);
+          if (!team.isFinished) {
+            startTimer(teamId);
+          }
+        } else {
+          updateTimerUI(teamId);
+          if (team.timeLeft <= 3 && Math.abs(team.timeLeft % 1) < 0.05) {
+            playSound("tick");
+          }
+        }
+      }, 100);
+    }
+
+    function updateTimerUI(teamId) {
+      const team = teams[teamId];
+      const percent = (team.timeLeft / gameConfig.timeLimitPerQuestion) * 100;
+      const bar = document.getElementById(`team${teamId}-timer-bar`);
+      bar.style.width = `${percent}%`;
+
+      if (percent < 25) {
+        bar.className = `h-full w-full transition-all duration-100 ease-linear bg-red-500`;
+      } else if (percent < 50) {
+        bar.className = `h-full w-full transition-all duration-100 ease-linear bg-amber-500`;
+      } else {
+        bar.className = `h-full w-full transition-all duration-100 ease-linear ${teamId === 1 ? 'bg-cyan-400' : 'bg-pink-400'}`;
+      }
+
+      document.getElementById(`team${teamId}-timer-text`).textContent = `${Math.ceil(team.timeLeft)}초`;
+    }
+
+    // --- 통합 키패드 터치 처리 ---
+    function pressKey(teamId, val) {
+      const team = teams[teamId];
+      if (team.isFinished) return;
+
+      const inputBox = document.getElementById(`team${teamId}-input-box`);
+
+      if (val === "back") {
+        if (team.currentInput.length > 0) {
+          team.currentInput = team.currentInput.slice(0, -1);
+        }
+      } else if (val === "enter") {
+        if (team.currentInput.length > 0) {
+          submitAnswer(teamId);
+          return;
+        }
+      } else {
+        if (team.currentInput.length < 3) {
+          team.currentInput += val;
+        }
+      }
+
+      if (team.currentInput.length === 0) {
+        inputBox.textContent = "?";
+        inputBox.classList.remove("text-cyan-400", "text-pink-400");
+        inputBox.classList.add("text-slate-500");
+      } else {
+        inputBox.textContent = team.currentInput;
+        inputBox.classList.remove("text-slate-500");
+        inputBox.classList.add(teamId === 1 ? "text-cyan-400" : "text-pink-400");
+      }
+    }
+
+    function submitAnswer(teamId) {
+      const team = teams[teamId];
+      const currentQ = questions[team.currentQuestionIndex];
+      const userAns = parseInt(team.currentInput);
+      const timeTaken = gameConfig.timeLimitPerQuestion - team.timeLeft;
+      
+      team.timeTakenSum += timeTaken;
+
+      if (userAns === currentQ.ans) {
+        team.correctCount++;
+        const speedBonus = Math.round((team.timeLeft / gameConfig.timeLimitPerQuestion) * 100);
+        team.score += (100 + speedBonus);
+        
+        flashScreen(teamId, "correct");
+        playSound("correct");
+      } else {
+        team.wrongCount++;
+        flashScreen(teamId, "wrong");
+        playSound("wrong");
+      }
+
+      document.getElementById(`team${teamId}-score-display`).textContent = team.score;
+
+      team.currentQuestionIndex++;
+      showQuestion(teamId);
+      if (!team.isFinished) {
+        startTimer(teamId);
+      }
+    }
+
+    function flashScreen(teamId, type) {
+      const flashDiv = document.getElementById(`team${teamId}-flash`);
+      flashDiv.className = `absolute inset-0 pointer-events-none transition-all duration-200 effect-${type}`;
+      setTimeout(() => {
+        flashDiv.className = "absolute inset-0 pointer-events-none transition-all duration-200";
+      }, 400);
+    }
+
+    function finishTeam(teamId) {
+      const team = teams[teamId];
+      team.isFinished = true;
+      if (team.timerInterval) clearInterval(team.timerInterval);
+
+      document.getElementById(`team${teamId}-waiting`).classList.remove("hidden");
+
+      if (teams[1].isFinished && teams[2].isFinished) {
+        endGame();
+      }
+    }
+
+    // --- 우승팀 판단 및 결과 발표 연출 ---
+    let activeWinningTeamId = null;
+
+    function endGame() {
+      document.getElementById("game-screen").classList.add("hidden");
+      document.getElementById("result-screen").classList.remove("hidden");
+      playSound("victory");
+
+      confetti({ particleCount: 100, spread: 70, origin: { x: 0.2, y: 0.5 } });
+      confetti({ particleCount: 100, spread: 70, origin: { x: 0.8, y: 0.5 } });
+
+      // 최종 매치업 상세 데이터 반영
+      document.getElementById("res-team1-name").textContent = teams[1].name;
+      document.getElementById("res-team1-score").textContent = `${teams[1].score}점`;
+      const t1Acc = Math.round((teams[1].correctCount / gameConfig.totalQuestions) * 100);
+      const t1Speed = (teams[1].timeTakenSum / gameConfig.totalQuestions).toFixed(1);
+      document.getElementById("res-team1-accuracy").textContent = `${t1Acc}% (${teams[1].correctCount}/${gameConfig.totalQuestions})`;
+      document.getElementById("res-team1-speed").textContent = `${t1Speed}초`;
+
+      document.getElementById("res-team2-name").textContent = teams[2].name;
+      document.getElementById("res-team2-score").textContent = `${teams[2].score}점`;
+      const t2Acc = Math.round((teams[2].correctCount / gameConfig.totalQuestions) * 100);
+      const t2Speed = (teams[2].timeTakenSum / gameConfig.totalQuestions).toFixed(1);
+      document.getElementById("res-team2-accuracy").textContent = `${t2Acc}% (${teams[2].correctCount}/${gameConfig.totalQuestions})`;
+      document.getElementById("res-team2-speed").textContent = `${t2Speed}초`;
+
+      // 승리 가늠 및 리더보드 가시화
+      const winAnnounce = document.getElementById("winner-announcement");
+      const regBlock = document.getElementById("registration-block");
+      const regDisabledBlock = document.getElementById("registration-disabled-block");
+      const regTitle = document.getElementById("registration-title");
+
+      activeWinningTeamId = null;
+
+      if (teams[1].score > teams[2].score) {
+        activeWinningTeamId = 1;
+        winAnnounce.innerHTML = `🎉 <span class="text-cyan-400 font-extrabold">${teams[1].name}</span> 우승!`;
+      } else if (teams[2].score > teams[1].score) {
+        activeWinningTeamId = 2;
+        winAnnounce.innerHTML = `🎉 <span class="text-pink-400 font-extrabold">${teams[2].name}</span> 우승!`;
+      } else {
+        winAnnounce.innerHTML = `🤝 승부를 가리지 못한 무승부!`;
+      }
+
+      // 우승한 경우에만 이름 기입 폼 제시
+      if (activeWinningTeamId) {
+        regBlock.classList.remove("hidden");
+        regDisabledBlock.classList.add("hidden");
+        regTitle.innerHTML = `🏅 우승한 <span class="text-amber-400 font-extrabold">${teams[activeWinningTeamId].name}</span>의 기록을 구글 시트에 등재하세요!`;
+        document.getElementById("leaderboard-nick").placeholder = `기록인 이름 (자동 붙임: (${teams[activeWinningTeamId].name}))`;
+      } else {
+        regBlock.classList.add("hidden");
+        regDisabledBlock.classList.remove("hidden");
+      }
+
+      // 결과 발표 직후 실시간 리더보드 표출 (최대 20등)
+      fetchLeaderboard();
+    }
+
+    // --- 리더보드 제출 로직 ---
+    async function saveToLeaderboard() {
+      const nickInput = document.getElementById("leaderboard-nick");
+      const rawNick = nickInput.value.trim();
+      
+      if (!rawNick) {
+        alert("이름을 입력해 주세요!");
+        return;
+      }
+
+      if (!activeWinningTeamId) {
+        alert("기록 등록 대상 우승팀이 존재하지 않습니다.");
+        return;
+      }
+
+      const winningTeam = teams[activeWinningTeamId];
+      // 지시사항: 이름 뒤에 괄호로 승리팀 기재
+      const formattedName = `${rawNick}(${winningTeam.name})`;
+      const finalScore = winningTeam.score;
+      const currentDateString = new Date().toLocaleString("ko-KR");
+
+      // 연동 주소가 공란인 경우 로컬 오프라인 모드로 등재
+      if (!googleAppsScriptUrl) {
+        saveToLocalFallback(formattedName, finalScore, currentDateString);
+        alert("구글 시트 연동 주소가 미기재되어 로컬 명예의 전당에 임시 세이브되었습니다!");
+        fetchLeaderboard();
+        nickInput.value = "";
+        document.getElementById("registration-block").classList.add("hidden");
+        return;
+      }
+
+      const submitBtn = document.getElementById("submit-record-btn");
+      submitBtn.disabled = true;
+      submitBtn.innerText = "제출 중...";
+
+      try {
+        const queryUrl = `${googleAppsScriptUrl}?action=write&name=${encodeURIComponent(formattedName)}&score=${finalScore}&date=${encodeURIComponent(currentDateString)}`;
+        const response = await fetch(queryUrl);
+        if (!response.ok) throw new Error("전송 실패");
+        const result = await response.json();
+
+        if (result.status === "success") {
+          alert("🎉 성공적으로 구글 스프레드시트에 명예의 기록이 연동되었습니다!");
+          // Top 20으로 자르기
+          const top20Data = result.data.slice(0, 20);
+          renderLeaderboardTable(top20Data);
+          document.getElementById("registration-block").classList.add("hidden");
+        } else {
+          throw new Error(result.message);
+        }
+      } catch (err) {
+        console.error("구글 전송 에러:", err);
+        alert("전송 중 오류가 발생하여 안전하게 로컬 명예의 전당에 임시 저장합니다.\n오류내용: " + err.message);
+        saveToLocalFallback(formattedName, finalScore, currentDateString);
+        fetchLeaderboard();
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.innerText = "기록 등록";
+        nickInput.value = "";
+      }
+    }
+
+    function showLeaderboardModal() {
+      fetchLeaderboard();
+      document.getElementById("leaderboard-modal").classList.remove("hidden");
+    }
+
+    function closeLeaderboardModal() {
+      document.getElementById("leaderboard-modal").classList.add("hidden");
+    }
+
+    // 로컬 청소
+    function clearLeaderboard() {
+      if (googleAppsScriptUrl && googleAppsScriptUrl !== DEFAULT_SCRIPT_URL) {
+        alert("개인 구글 스프레드시트 연동 상태입니다.\n기록 통합 삭제는 구글 스프레드시트 내에서 직접 수행해 주세요.");
+        return;
+      }
+      if (confirm("정말로 로컬 임시 기록을 완전히 삭제하시겠습니까?")) {
+        localStorage.removeItem("math_battle_leaderboard");
+        fetchLeaderboard();
+      }
+    }
+
+    // --- 내비게이션 제어 ---
+    function returnToStart() {
+      document.getElementById("result-screen").classList.add("hidden");
+      document.getElementById("start-screen").classList.remove("hidden");
+    }
+
+    function restartWithSameSettings() {
+      document.getElementById("result-screen").classList.add("hidden");
+      startGame();
+    }
+
+    // DOM 완성 시 초기 셋팅 로드
+    window.addEventListener("DOMContentLoaded", () => {
+      updateConnectionStatus();
+      fetchLeaderboard();
+    });
+  </script>
+</body>
+</html>
